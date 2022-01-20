@@ -390,6 +390,9 @@ class Placeholder(json_utils.Jsonable):
       result.extend(op.placeholders_involved())
     return result
 
+  def set_key(self, key: str):
+    self._key = key
+
 
 # To ensure that ArtifactPlaceholder operations on a ChannelWrappedPlaceholder
 # still returns a ChannelWrappedPlaceholder.

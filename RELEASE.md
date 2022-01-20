@@ -153,6 +153,7 @@
 *   Supported endpoint overwrite for CAIP Tuner. Users can use the `keras-tuner`
     module or any tuner that implements the `keras_tuner.Tuner` interface for
     (parallel) tuning on Vertex.
+*   Support dynamic exec properties in TFX pipeline. Downstream component parameter could be set by the upstream ouput using Placeholder.
 
 ## Breaking Changes
 

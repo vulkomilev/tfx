@@ -197,6 +197,13 @@ def generate_resolved_info(
     assert isinstance(resolved_input_artifacts, inputs_utils.Trigger)
     assert resolved_input_artifacts
 
+  if resolved_input_artifacts and len(resolved_input_artifacts) == 1:
+    input_artifacts = resolved_input_artifacts[0]
+    dynamic_exec_properties = data_types_utils.build_parsed_value_dict(
+        inputs_utils.resolve_parameters_with_schema(
+            node_parameters=node.parameters, input_dict=input_artifacts))
+    exec_properties.update(dynamic_exec_properties)
+
   return ResolvedInfo(
       contexts=contexts,
       exec_properties=exec_properties,
