@@ -660,7 +660,8 @@ class PipelineOpsTest(test_utils.TfxTest, parameterized.TestCase):
               node_uid=task_lib.NodeUid(
                   pipeline_uid=task_lib.PipelineUid.from_pipeline(pipeline),
                   node_id='Trainer'),
-              is_cancelled=True), None, None, None, None
+              cancel_type=task_lib.NodeCancelType.CANCEL_EXEC), None, None,
+          None, None
       ]
 
       pipeline_ops.orchestrate(m, task_queue, self._mock_service_job_manager)
@@ -688,7 +689,7 @@ class PipelineOpsTest(test_utils.TfxTest, parameterized.TestCase):
       task_queue.task_done(task)
       self.assertTrue(task_lib.is_exec_node_task(task))
       self.assertEqual('Trainer', task.node_uid.node_id)
-      self.assertTrue(task.is_cancelled)
+      self.assertEqual(task_lib.NodeCancelType.CANCEL_EXEC, task.cancel_type)
 
       self.assertTrue(task_queue.is_empty())
 
@@ -698,13 +699,13 @@ class PipelineOpsTest(test_utils.TfxTest, parameterized.TestCase):
               pipeline_state.pipeline,
               pipeline.nodes[2].pipeline_node,
               mock.ANY,
-              is_cancelled=True),
+              cancel_type=task_lib.NodeCancelType.CANCEL_EXEC),
           mock.call(
               m,
               pipeline_state.pipeline,
               pipeline.nodes[3].pipeline_node,
               mock.ANY,
-              is_cancelled=True)
+              cancel_type=task_lib.NodeCancelType.CANCEL_EXEC)
       ])
       self.assertEqual(2, mock_gen_task_from_active.call_count)
 
@@ -783,7 +784,7 @@ class PipelineOpsTest(test_utils.TfxTest, parameterized.TestCase):
         task_queue.task_done(task)
         self.assertTrue(task_lib.is_cancel_node_task(task))
         self.assertEqual(node_id, task.node_uid.node_id)
-        self.assertTrue(task.pause)
+        self.assertEqual(task.cancel_type, task_lib.NodeCancelType.PAUSE_EXEC)
 
       self.assertTrue(task_queue.is_empty())
 
@@ -798,8 +799,15 @@ class PipelineOpsTest(test_utils.TfxTest, parameterized.TestCase):
       # stop_node_services should be called for Transform (mixed service node)
       # too since corresponding ExecNodeTask has been processed.
       self._mock_service_job_manager.stop_node_services.assert_has_calls(
-          [mock.call(mock.ANY, 'ExampleGen'),
-           mock.call(mock.ANY, 'Transform')])
+          [mock.call(mock.ANY, 'Transform')])
+
+      # Check that the node states are STARTED.
+      [execution] = m.store.get_executions_by_id([pipeline_state.execution_id])
+      node_states_dict = pstate._get_node_states_dict(execution)
+      self.assertLen(node_states_dict, 4)
+      self.assertSetEqual(
+          set([pstate.NodeState.STARTED]),
+          set(n.state for n in node_states_dict.values()))
 
       # Pipeline should no longer be in update-initiated state but be active.
       with pipeline_state:
@@ -853,7 +861,7 @@ class PipelineOpsTest(test_utils.TfxTest, parameterized.TestCase):
         task_queue.task_done(task)
         self.assertTrue(task_lib.is_cancel_node_task(task))
         self.assertEqual(node_id, task.node_uid.node_id)
-        self.assertTrue(task.pause)
+        self.assertEqual(task.cancel_type, task_lib.NodeCancelType.PAUSE_EXEC)
 
       # Pipeline continues to be in update initiated state until all
       # ExecNodeTasks have been dequeued (which was not the case when last
@@ -954,7 +962,8 @@ class PipelineOpsTest(test_utils.TfxTest, parameterized.TestCase):
       evaluator_task = test_utils.create_exec_node_task(
           node_uid=evaluator_node_uid)
       cancelled_evaluator_task = test_utils.create_exec_node_task(
-          node_uid=evaluator_node_uid, is_cancelled=True)
+          node_uid=evaluator_node_uid,
+          cancel_type=task_lib.NodeCancelType.CANCEL_EXEC)
 
       pipeline_ops.initiate_pipeline_start(m, pipeline)
       with pstate.PipelineState.load(
