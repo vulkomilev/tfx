@@ -130,14 +130,17 @@ def initiate_pipeline_start(
       partial_run_utils.set_latest_pipeline_run_strategy(snapshot_settings)
     reused_pipeline_view = _load_reused_pipeline_view(
         mlmd_handle, pipeline, partial_run_option.snapshot_settings)
-
     # Mark nodes using partial pipeline run lib.
+    # Nodes marked as SKIPPED (due to conditional) do not have an execution
+    # registered in MLMD, so we skip their snapshotting step.
     try:
       pipeline = partial_run_utils.mark_pipeline(
           pipeline,
           from_nodes=partial_run_option.from_nodes,
           to_nodes=partial_run_option.to_nodes,
           skip_nodes=partial_run_option.skip_nodes,
+          skip_snapshot_nodes=_get_previously_skipped_nodes(
+              reused_pipeline_view),
           snapshot_settings=partial_run_option.snapshot_settings)
     except ValueError as e:
       raise status_lib.StatusNotOkError(
@@ -415,6 +418,18 @@ def _wait_for_node_inactivation(pipeline_state: pstate.PipelineState,
   return _wait_for_predicate(_is_inactivated, 'node inactivation', timeout_secs)
 
 
+def _get_previously_skipped_nodes(
+    reused_pipeline_view: pstate.PipelineView) -> List[str]:
+  """Returns id of nodes skipped in previous pipeline run due to conditional."""
+  reused_pipeline_node_states = reused_pipeline_view.get_node_states_dict(
+  ) if reused_pipeline_view else dict()
+  skipped_nodes = [
+      node_id for node_id, node_state in reused_pipeline_node_states.items()
+      if node_state.state == pstate.NodeState.SKIPPED
+  ]
+  return skipped_nodes
+
+
 def _load_reused_pipeline_view(
     mlmd_handle: metadata.Metadata, pipeline: pipeline_pb2.Pipeline,
     snapshot_settings: pipeline_pb2.SnapshotSettings
@@ -503,12 +518,15 @@ def resume_pipeline(mlmd_handle: metadata.Metadata,
   ]
 
   # Mark nodes using partial pipeline run lib.
+  # Nodes marked as SKIPPED (due to conditional) do not have an execution
+  # registered in MLMD, so we skip their snapshotting step.
   try:
     pipeline = partial_run_utils.mark_pipeline(
         pipeline,
         from_nodes=pipeline_nodes,
         to_nodes=pipeline_nodes,
         skip_nodes=previously_succeeded_nodes,
+        skip_snapshot_nodes=_get_previously_skipped_nodes(latest_pipeline_view),
         snapshot_settings=partial_run_utils.latest_pipeline_snapshot_settings())
   except ValueError as e:
     raise status_lib.StatusNotOkError(
